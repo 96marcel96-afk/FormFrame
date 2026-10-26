@@ -7,12 +7,12 @@ import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-import androidx.activity.ComponentActivity;
+import android.app.Activity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.webkit.WebViewAssetLoader;
 
-public class MainActivity extends ComponentActivity {
+public class MainActivity extends Activity {
     private static final int CAMERA_PERMISSION_REQUEST = 41;
     private WebView webView;
     private PermissionRequest pendingWebPermission;
