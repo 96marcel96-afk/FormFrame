@@ -1,0 +1,40 @@
+
+name: Build FormFrame APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'FormFrameAndroid/**'
+      - '.github/workflows/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository herunterladen
+        uses: actions/checkout@v4
+
+      - name: Java einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle einrichten
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Android APK bauen
+        working-directory: FormFrameAndroid
+        run: gradle assembleDebug
+
+      - name: APK als Download bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: FormFrame-debug-apk
+          path: FormFrameAndroid/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
