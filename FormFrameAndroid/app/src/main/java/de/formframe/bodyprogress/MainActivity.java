@@ -31,6 +31,7 @@ public class MainActivity extends Activity {
     private static final int CAMERA_PERMISSION_REQUEST = 41;
     private static final int FILE_CHOOSER_REQUEST = 42;
     private static final int FOLDER_CHOOSER_REQUEST = 43;
+    private static final int BACKUP_SAVE_REQUEST = 44;
     private static final String PREFS = "formframe_settings";
     private static final String FOLDER_URI = "photo_folder_uri";
     private static final String FOLDER_NAME = "photo_folder_name";
@@ -38,6 +39,8 @@ public class MainActivity extends Activity {
     private WebView webView;
     private PermissionRequest pendingWebPermission;
     private ValueCallback<Uri[]> pendingFileSelection;
+    private byte[] pendingBackupBytes;
+    private String pendingBackupName;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,6 +130,28 @@ public class MainActivity extends Activity {
             pendingFileSelection = null;
             return;
         }
+        if (requestCode == BACKUP_SAVE_REQUEST) {
+            byte[] bytes = pendingBackupBytes;
+            String fileName = pendingBackupName;
+            pendingBackupBytes = null;
+            pendingBackupName = null;
+            if (resultCode == RESULT_OK && data != null && data.getData() != null && bytes != null) {
+                Uri destination = data.getData();
+                fileExecutor.execute(() -> {
+                    boolean success = false;
+                    try (OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
+                        if (output == null) throw new IllegalStateException("Could not open backup destination");
+                        output.write(bytes);
+                        output.flush();
+                        success = true;
+                    } catch (Exception ignored) { }
+                    notifyBackupSaved(success, fileName, false);
+                });
+            } else {
+                notifyBackupSaved(false, fileName, true);
+            }
+            return;
+        }
         if (requestCode == FOLDER_CHOOSER_REQUEST) {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
                 Uri tree = data.getData();
@@ -142,6 +167,39 @@ public class MainActivity extends Activity {
                 notifyFolderChanged(getPhotoFolderName());
             }
         }
+    }
+
+    private void requestBackupSave(String dataUrl, String fileName) {
+        final byte[] bytes;
+        try {
+            int comma = dataUrl.indexOf(',');
+            if (comma < 0) throw new IllegalArgumentException("Invalid backup data");
+            bytes = Base64.decode(dataUrl.substring(comma + 1), Base64.DEFAULT);
+        } catch (Exception exception) {
+            notifyBackupSaved(false, fileName, false);
+            return;
+        }
+        runOnUiThread(() -> {
+            pendingBackupBytes = bytes;
+            pendingBackupName = fileName;
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, fileName);
+            try {
+                startActivityForResult(intent, BACKUP_SAVE_REQUEST);
+            } catch (ActivityNotFoundException exception) {
+                pendingBackupBytes = null;
+                pendingBackupName = null;
+                notifyBackupSaved(false, fileName, false);
+            }
+        });
+    }
+
+    private void notifyBackupSaved(boolean success, String fileName, boolean canceled) {
+        if (webView != null) webView.post(() -> webView.evaluateJavascript(
+                "window.onBackupSaved && window.onBackupSaved(" + success + ","
+                        + JSONObject.quote(fileName == null ? "" : fileName) + "," + canceled + ")", null));
     }
 
     private String folderDisplayName(Uri tree) {
@@ -258,6 +316,7 @@ public class MainActivity extends Activity {
             notifyFolderChanged("");
         }
         @JavascriptInterface public void savePhoto(String dataUrl, String fileName) { writePhoto(dataUrl, fileName); }
+        @JavascriptInterface public void saveBackup(String dataUrl, String fileName) { requestBackupSave(dataUrl, fileName); }
         @JavascriptInterface public void deletePhoto(String fileName) { deletePhotoFile(fileName); }
     }
 
